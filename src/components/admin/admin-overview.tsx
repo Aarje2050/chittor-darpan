@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { businessService, userService, type BusinessCounts, type Business } from '@/lib/database'
+import { businessService, userService, type BusinessCounts, type Business, reviewService } from '@/lib/database'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -14,6 +14,22 @@ interface DashboardStats {
 }
 
 export default function AdminOverview() {
+  const [reviewCounts, setReviewCounts] = useState({ pending: 0, published: 0, total: 0 })
+  
+  useEffect(() => {
+    const loadReviewCounts = async () => {
+      try {
+        const { data } = await reviewService.getReviewCounts()
+        if (data) {
+          setReviewCounts(data)
+        }
+      } catch (error) {
+        console.error('Error loading review counts:', error)
+      }
+    }
+    
+    loadReviewCounts()
+  }, [])  
   const [stats, setStats] = useState<DashboardStats>({
     businessCounts: { total: 0, pending: 0, published: 0, rejected: 0, suspended: 0 },
     totalUsers: 0,
@@ -23,8 +39,11 @@ export default function AdminOverview() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
+
   // Fetch dashboard stats using database service - SUPER CLEAN! 🚀
   const fetchDashboardStats = async () => {
+
+
     try {
       setLoading(true)
       setError(null)
@@ -152,6 +171,13 @@ export default function AdminOverview() {
           bgColor="bg-purple-50"
           iconColor="text-purple-600"
         />
+
+<Card>
+  <CardContent className="p-4 text-center">
+    <div className="text-2xl font-bold text-yellow-600">{reviewCounts?.pending || 0}</div>
+    <div className="text-sm text-gray-600">Pending Reviews</div>
+  </CardContent>
+</Card>
       </div>
 
       {/* Quick actions */}

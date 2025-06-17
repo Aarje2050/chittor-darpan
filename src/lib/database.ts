@@ -1,4 +1,4 @@
-// src/lib/database.ts
+// src/lib/database.ts - Enhanced with Category & Area Filtering
 // Professional database service layer for clean, maintainable code
 
 import { supabase } from './supabase'
@@ -29,6 +29,7 @@ export interface Business {
   area_name?: string | null
   owner_email?: string
   owner_name?: string | null
+  categories?: Category[] // Add categories to business interface
 }
 
 export interface BusinessFilters {
@@ -37,7 +38,9 @@ export interface BusinessFilters {
   limit?: number
   cityId?: string
   areaId?: string
-  ownerId?: string // Added for business owner filtering
+  categoryId?: string // Add category filtering
+  categorySlug?: string // Add category slug filtering
+  ownerId?: string
 }
 
 export interface BusinessCounts {
@@ -92,10 +95,58 @@ export interface BusinessFormData {
   category_ids: string[]
 }
 
+// Review-related types (add to existing types)
+export interface Review {
+  id: string
+  business_id: string
+  user_id: string
+  rating: number
+  title: string | null
+  content: string | null
+  status: 'pending' | 'published' | 'rejected'
+  is_verified: boolean
+  created_at: string
+  updated_at: string
+  // Related data
+  user_name?: string
+  user_email?: string
+  reply?: ReviewReply | null
+}
+
+export interface ReviewReply {
+  id: string
+  review_id: string
+  business_id: string
+  content: string
+  replied_by: string
+  created_at: string
+  updated_at: string
+  replier_name?: string
+}
+
+export interface ReviewFormData {
+  rating: number
+  title: string
+  content: string
+}
+
+export interface ReviewStats {
+  totalReviews: number
+  averageRating: number
+  ratingDistribution: {
+    1: number
+    2: number
+    3: number
+    4: number
+    5: number
+  }
+}
+
 // Business Service - All business-related database operations
 export const businessService = {
   /**
    * Get businesses with optional filters and relationships
+   * Enhanced with category and area filtering support
    */
   async getBusinesses(filters: BusinessFilters = {}): Promise<{ data: Business[] | null; error: any }> {
     try {
@@ -109,7 +160,7 @@ export const businessService = {
         `)
         .order('created_at', { ascending: false })
 
-      // Apply filters
+      // Apply basic filters
       if (filters.status && filters.status !== 'all') {
         query = query.eq('status', filters.status)
       }
@@ -142,8 +193,7 @@ export const businessService = {
         return { data: null, error }
       }
 
-      // Transform data to match our interface
-      const businesses: Business[] = (data || []).map(item => ({
+      let businesses: Business[] = (data || []).map(item => ({
         ...item,
         city_name: item.cities?.name || 'Unknown City',
         area_name: item.areas?.name || null,
@@ -151,12 +201,93 @@ export const businessService = {
         owner_name: item.profiles?.full_name || null
       }))
 
+      // Category filtering (many-to-many relationship)
+      if (filters.categoryId || filters.categorySlug) {
+        const categoryFilteredBusinesses = await this.filterBusinessesByCategory(
+          businesses, 
+          filters.categoryId, 
+          filters.categorySlug
+        )
+        businesses = categoryFilteredBusinesses
+      }
+
       return { data: businesses, error: null }
 
     } catch (error) {
       console.error('Unexpected error in getBusinesses:', error)
       return { data: null, error }
     }
+  },
+
+  /**
+   * Filter businesses by category (handles many-to-many relationship)
+   */
+  async filterBusinessesByCategory(
+    businesses: Business[], 
+    categoryId?: string, 
+    categorySlug?: string
+  ): Promise<Business[]> {
+    try {
+      let targetCategoryId = categoryId
+
+      // If we have slug but no ID, find the category ID
+      if (categorySlug && !categoryId) {
+        const { data: categories } = await categoryService.getBusinessCategories()
+        const category = categories?.find(cat => cat.slug === categorySlug)
+        if (!category) {
+          return [] // Category not found
+        }
+        targetCategoryId = category.id
+      }
+
+      if (!targetCategoryId) {
+        return businesses
+      }
+
+      // Get business IDs that belong to this category
+      const { data: businessCategories, error } = await supabase
+        .from('business_categories')
+        .select('business_id')
+        .eq('category_id', targetCategoryId)
+
+      if (error) {
+        console.error('Error fetching business categories:', error)
+        return businesses // Return all businesses if category fetch fails
+      }
+
+      const categoryBusinessIds = new Set(
+        businessCategories?.map(bc => bc.business_id) || []
+      )
+
+      // Filter businesses to only include those in the category
+      return businesses.filter(business => categoryBusinessIds.has(business.id))
+
+    } catch (error) {
+      console.error('Error filtering businesses by category:', error)
+      return businesses // Return all businesses if filtering fails
+    }
+  },
+
+  /**
+   * Get businesses by category slug (optimized method)
+   */
+  async getBusinessesByCategory(categorySlug: string): Promise<{ data: Business[] | null; error: any }> {
+    return this.getBusinesses({
+      status: 'published',
+      categorySlug: categorySlug,
+      limit: 1000
+    })
+  },
+
+  /**
+   * Get businesses by area ID (already working)
+   */
+  async getBusinessesByArea(areaId: string): Promise<{ data: Business[] | null; error: any }> {
+    return this.getBusinesses({
+      status: 'published',
+      areaId: areaId,
+      limit: 1000
+    })
   },
 
   /**
@@ -378,20 +509,19 @@ export const businessService = {
         }
       }
 
+      // Auto-promote user to business_owner if they're just a regular user
+      const { data: currentRole } = await userService.getCurrentUserRole(ownerId)
+      if (currentRole === 'user') {
+        await userService.updateRole(ownerId, 'business_owner')
+      }
+
       return { data, error: null }
 
     } catch (error) {
       console.error('Unexpected error in create:', error)
       return { data: null, error }
-
-      }
-      
-  // Auto-promote user to business_owner if they're just a regular user
-  const { data: currentRole } = await userService.getCurrentUserRole(ownerId)
-  if (currentRole === 'user') {
-    await userService.updateRole(ownerId, 'business_owner')
-  }
-},
+    }
+  },
 
   /**
    * Update business details
@@ -494,6 +624,40 @@ export const locationService = {
       console.error('Unexpected error in getAreasByCity:', error)
       return { data: null, error }
     }
+  },
+
+  /**
+   * Get area by slug (enhanced for area page)
+   */
+  async getAreaBySlug(slug: string): Promise<{ data: { area: Area; city: City } | null; error: any }> {
+    try {
+      // Get all cities and their areas to find the matching slug
+      const { data: cities, error: citiesError } = await this.getCities()
+      
+      if (citiesError || !cities) {
+        return { data: null, error: citiesError }
+      }
+
+      for (const city of cities) {
+        const { data: areas, error: areasError } = await this.getAreasByCity(city.id)
+        
+        if (!areasError && areas) {
+          const matchingArea = areas.find(a => a.slug === slug)
+          if (matchingArea) {
+            return { 
+              data: { area: matchingArea, city }, 
+              error: null 
+            }
+          }
+        }
+      }
+
+      return { data: null, error: 'Area not found' }
+
+    } catch (error) {
+      console.error('Unexpected error in getAreaBySlug:', error)
+      return { data: null, error }
+    }
   }
 }
 
@@ -520,6 +684,30 @@ export const categoryService = {
 
     } catch (error) {
       console.error('Unexpected error in getBusinessCategories:', error)
+      return { data: null, error }
+    }
+  },
+
+  /**
+   * Get category by slug (enhanced for category page)
+   */
+  async getCategoryBySlug(slug: string): Promise<{ data: Category | null; error: any }> {
+    try {
+      const { data: categories, error } = await this.getBusinessCategories()
+      
+      if (error) {
+        return { data: null, error }
+      }
+
+      const category = categories?.find(cat => cat.slug === slug)
+      
+      return { 
+        data: category || null, 
+        error: category ? null : 'Category not found' 
+      }
+
+    } catch (error) {
+      console.error('Unexpected error in getCategoryBySlug:', error)
       return { data: null, error }
     }
   }
@@ -572,19 +760,21 @@ export const userService = {
     }
   },
 
-  // Add to userService in lib/database.ts
-async getCurrentUserRole(userId: string): Promise<{ data: string | null; error: any }> {
+  /**
+   * Get current user role
+   */
+  async getCurrentUserRole(userId: string): Promise<{ data: string | null; error: any }> {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('user_type')
         .eq('id', userId)
         .single()
-  
+
       if (error) {
         return { data: null, error }
       }
-  
+
       return { data: data.user_type || 'user', error: null }
     } catch (error) {
       return { data: null, error }
@@ -592,10 +782,331 @@ async getCurrentUserRole(userId: string): Promise<{ data: string | null; error: 
   }
 }
 
-// Export everything for easy imports
+// Review Service - Add this to your existing database.ts
+export const reviewService = {
+  /**
+   * Get reviews for a business with user info and replies
+   */
+  async getBusinessReviews(businessId: string): Promise<{ data: Review[] | null; error: any }> {
+    try {
+      const { data, error } = await supabase
+        .from('reviews') // This should be a view: CREATE VIEW public.reviews AS SELECT * FROM business_directory.reviews
+        .select(`
+          *,
+          profiles:user_id(full_name, email),
+          review_replies:review_replies(
+            id,
+            content,
+            created_at,
+            updated_at,
+            profiles:replied_by(full_name)
+          )
+        `)
+        .eq('business_id', businessId)
+        .eq('status', 'published')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching business reviews:', error)
+        return { data: null, error }
+      }
+
+      // Transform data to match our interface
+      const reviews: Review[] = (data || []).map(item => ({
+        ...item,
+        user_name: item.profiles?.full_name || null,
+        user_email: item.profiles?.email || null,
+        reply: item.review_replies && item.review_replies.length > 0 ? {
+          ...item.review_replies[0],
+          replier_name: item.review_replies[0].profiles?.full_name || null
+        } : null
+      }))
+
+      return { data: reviews, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in getBusinessReviews:', error)
+      return { data: null, error }
+    }
+  },
+
+  /**
+   * Get review statistics for a business
+   */
+  async getReviewStats(businessId: string): Promise<{ data: ReviewStats | null; error: any }> {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('rating')
+        .eq('business_id', businessId)
+        .eq('status', 'published')
+
+      if (error) {
+        console.error('Error fetching review stats:', error)
+        return { data: null, error }
+      }
+
+      const reviews = data || []
+      const totalReviews = reviews.length
+
+      if (totalReviews === 0) {
+        return {
+          data: {
+            totalReviews: 0,
+            averageRating: 0,
+            ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+          },
+          error: null
+        }
+      }
+
+      // Calculate average rating
+      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0)
+      const averageRating = totalRating / totalReviews
+
+      // Calculate rating distribution
+      const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+      reviews.forEach(review => {
+        ratingDistribution[review.rating as keyof typeof ratingDistribution]++
+      })
+
+      const stats: ReviewStats = {
+        totalReviews,
+        averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+        ratingDistribution
+      }
+
+      return { data: stats, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in getReviewStats:', error)
+      return { data: null, error }
+    }
+  },
+
+  /**
+   * Submit a new review
+   */
+  async submitReview(
+    businessId: string, 
+    userId: string, 
+    reviewData: ReviewFormData
+  ): Promise<{ success: boolean; error: any }> {
+    try {
+      // Check if user already reviewed this business
+      const { data: existingReview, error: checkError } = await supabase
+        .from('reviews')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('user_id', userId)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error checking existing review:', checkError)
+        return { success: false, error: 'Failed to check existing review' }
+      }
+
+      if (existingReview) {
+        return { success: false, error: 'You have already reviewed this business' }
+      }
+
+      // Insert new review
+      const { error: insertError } = await supabase
+        .from('reviews')
+        .insert([
+          {
+            business_id: businessId,
+            user_id: userId,
+            rating: reviewData.rating,
+            title: reviewData.title.trim() || null,
+            content: reviewData.content.trim(),
+            status: 'pending', // Reviews start as pending for moderation
+            is_verified: false
+          }
+        ])
+
+      if (insertError) {
+        console.error('Error inserting review:', insertError)
+        return { success: false, error: 'Failed to submit review' }
+      }
+
+      return { success: true, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in submitReview:', error)
+      return { success: false, error: 'Failed to submit review' }
+    }
+  },
+
+  /**
+   * Get all reviews for admin management
+   */
+  async getAllReviews(filters: {
+    status?: 'all' | 'pending' | 'published' | 'rejected'
+    businessId?: string
+    limit?: number
+  } = {}): Promise<{ data: Review[] | null; error: any }> {
+    try {
+      let query = supabase
+        .from('reviews')
+        .select(`
+          *,
+          profiles:user_id(full_name, email),
+          businesses:business_id(name, slug)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (filters.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status)
+      }
+
+      if (filters.businessId) {
+        query = query.eq('business_id', filters.businessId)
+      }
+
+      if (filters.limit) {
+        query = query.limit(filters.limit)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        console.error('Error fetching all reviews:', error)
+        return { data: null, error }
+      }
+
+      // Transform data
+      const reviews: Review[] = (data || []).map(item => ({
+        ...item,
+        user_name: item.profiles?.full_name || null,
+        user_email: item.profiles?.email || null,
+        business_name: item.businesses?.name || null,
+        business_slug: item.businesses?.slug || null
+      }))
+
+      return { data: reviews, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in getAllReviews:', error)
+      return { data: null, error }
+    }
+  },
+
+  /**
+   * Update review status (admin function)
+   */
+  async updateReviewStatus(
+    reviewId: string, 
+    status: 'pending' | 'published' | 'rejected'
+  ): Promise<{ success: boolean; error: any }> {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({ 
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reviewId)
+
+      if (error) {
+        console.error('Error updating review status:', error)
+        return { success: false, error }
+      }
+
+      return { success: true, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in updateReviewStatus:', error)
+      return { success: false, error }
+    }
+  },
+
+  /**
+   * Add business reply to review
+   */
+  async addReviewReply(
+    reviewId: string,
+    businessId: string,
+    replierId: string,
+    content: string
+  ): Promise<{ success: boolean; error: any }> {
+    try {
+      // Check if reply already exists
+      const { data: existingReply, error: checkError } = await supabase
+        .from('review_replies')
+        .select('id')
+        .eq('review_id', reviewId)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing reply:', checkError)
+        return { success: false, error: 'Failed to check existing reply' }
+      }
+
+      if (existingReply) {
+        return { success: false, error: 'Reply already exists for this review' }
+      }
+
+      // Insert reply
+      const { error: insertError } = await supabase
+        .from('review_replies')
+        .insert([
+          {
+            review_id: reviewId,
+            business_id: businessId,
+            replied_by: replierId,
+            content: content.trim()
+          }
+        ])
+
+      if (insertError) {
+        console.error('Error inserting review reply:', insertError)
+        return { success: false, error: 'Failed to add reply' }
+      }
+
+      return { success: true, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in addReviewReply:', error)
+      return { success: false, error: 'Failed to add reply' }
+    }
+  },
+
+  /**
+   * Get review counts by status (for admin dashboard)
+   */
+  async getReviewCounts(): Promise<{ data: any | null; error: any }> {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('status')
+
+      if (error) {
+        console.error('Error getting review counts:', error)
+        return { data: null, error }
+      }
+
+      const counts = {
+        total: data?.length || 0,
+        pending: data?.filter(r => r.status === 'pending').length || 0,
+        published: data?.filter(r => r.status === 'published').length || 0,
+        rejected: data?.filter(r => r.status === 'rejected').length || 0
+      }
+
+      return { data: counts, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in getReviewCounts:', error)
+      return { data: null, error }
+    }
+  }
+}
+
+// Update the main export to include reviewService
 export default {
   business: businessService,
   location: locationService,
   category: categoryService,
-  user: userService
+  user: userService,
+  review: reviewService  // Add this line
 }
