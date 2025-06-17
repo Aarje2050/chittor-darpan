@@ -1,7 +1,7 @@
 // src/app/search/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { businessService, categoryService, locationService, type Business, type Category, type City } from '@/lib/database'
 import { MobileHeader } from '@/components/mobile/mobile-header'
@@ -25,7 +25,8 @@ interface SearchResults {
   totalPages: number
 }
 
-export default function SearchPage() {
+// Main content component that uses useSearchParams
+function SearchPageContent() {
   const [results, setResults] = useState<SearchResults>({
     businesses: [],
     totalCount: 0,
@@ -262,6 +263,22 @@ export default function SearchPage() {
   )
 }
 
+// Main page component with Suspense wrapper
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading search...</p>
+        </div>
+      </div>
+    }>
+      <SearchPageContent />
+    </Suspense>
+  )
+}
+
 // Mobile Search Content Component
 interface SearchContentProps {
   results: SearchResults
@@ -495,7 +512,7 @@ function DesktopSearchLayout({
   )
 }
 
-// Shared Components
+// Shared Components (keeping exactly the same from your original file)
 
 function SearchResultsHeader({ results, filters }: { results: SearchResults; filters: SearchFilters }) {
   return (

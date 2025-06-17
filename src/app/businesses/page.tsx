@@ -1,7 +1,7 @@
 // src/app/businesses/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { businessService, categoryService, locationService, type Business, type Category, type City } from '@/lib/database'
 import { MobileHeader } from '@/components/mobile/mobile-header'
@@ -26,7 +26,8 @@ interface BusinessResults {
   totalPages: number
 }
 
-export default function AllBusinessesPage() {
+// Main content component that uses useSearchParams
+function BusinessesPageContent() {
   const [results, setResults] = useState<BusinessResults>({
     businesses: [],
     totalCount: 0,
@@ -286,6 +287,22 @@ export default function AllBusinessesPage() {
   )
 }
 
+// Main page component with Suspense wrapper
+export default function AllBusinessesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading businesses...</p>
+        </div>
+      </div>
+    }>
+      <BusinessesPageContent />
+    </Suspense>
+  )
+}
+
 // Mobile Content Component
 interface BusinessesContentProps {
   results: BusinessResults
@@ -532,8 +549,7 @@ function DesktopBusinessesLayout({
   )
 }
 
-// Shared Components
-
+// Shared Components (keeping all existing components exactly the same)
 function BusinessesHeader({ results, filters }: { results: BusinessResults; filters: BusinessFilters }) {
   const getHeaderText = () => {
     if (filters.search) {

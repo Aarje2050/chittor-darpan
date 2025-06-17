@@ -1,7 +1,7 @@
 // src/app/categories/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { categoryService, businessService, type Category } from '@/lib/database'
 import { MobileHeader } from '@/components/mobile/mobile-header'
@@ -21,7 +21,8 @@ interface CategoryResults {
   totalPages: number
 }
 
-export default function AllCategoriesPage() {
+// Main content component that uses useSearchParams
+function CategoriesPageContent() {
   const [results, setResults] = useState<CategoryResults>({
     categories: [],
     totalCount: 0,
@@ -194,6 +195,22 @@ export default function AllCategoriesPage() {
         />
       </div>
     </>
+  )
+}
+
+// Main page component with Suspense wrapper
+export default function AllCategoriesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading categories...</p>
+        </div>
+      </div>
+    }>
+      <CategoriesPageContent />
+    </Suspense>
   )
 }
 
@@ -383,7 +400,7 @@ function DesktopCategoriesLayout({
   )
 }
 
-// Shared Components
+// Shared Components (keeping exactly the same from your original file)
 
 function CategoriesHeader({ results, searchQuery }: { 
   results: CategoryResults
