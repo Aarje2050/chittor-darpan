@@ -293,7 +293,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent className="p-4 space-y-3">
             <Button 
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/add-business')}
               className="w-full justify-start bg-black text-white hover:bg-gray-800"
             >
               <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
