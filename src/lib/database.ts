@@ -78,6 +78,7 @@ export interface Category {
   name: string
   slug: string
   feature_type: string
+  description?:string
 }
 
 export interface BusinessFormData {
@@ -95,7 +96,7 @@ export interface BusinessFormData {
   category_ids: string[]
 }
 
-// Review-related types (add to existing types)
+// Enhanced Review interface - update existing one
 export interface Review {
   id: string
   business_id: string
@@ -107,6 +108,9 @@ export interface Review {
   is_verified: boolean
   created_at: string
   updated_at: string
+  edit_count: number  // NEW
+  edited_at: string | null  // NEW
+  is_deleted: boolean  // NEW
   // Related data
   user_name?: string
   user_email?: string
@@ -920,7 +924,7 @@ export const reviewService = {
             rating: reviewData.rating,
             title: reviewData.title.trim() || null,
             content: reviewData.content.trim(),
-            status: 'pending', // Reviews start as pending for moderation
+            status: 'published', // reviews will get publish instantly
             is_verified: false
           }
         ])
@@ -1022,55 +1026,190 @@ export const reviewService = {
   },
 
   /**
-   * Add business reply to review
+   * Update an existing review (with edit limits)
    */
-  async addReviewReply(
+  async updateReview(
     reviewId: string,
-    businessId: string,
-    replierId: string,
-    content: string
+    userId: string,
+    reviewData: ReviewFormData
   ): Promise<{ success: boolean; error: any }> {
     try {
-      // Check if reply already exists
-      const { data: existingReply, error: checkError } = await supabase
-        .from('review_replies')
-        .select('id')
-        .eq('review_id', reviewId)
+      // Get current review to check edit count and ownership
+      const { data: currentReview, error: fetchError } = await supabase
+        .from('reviews')
+        .select('edit_count, user_id')
+        .eq('id', reviewId)
         .single()
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('Error checking existing reply:', checkError)
-        return { success: false, error: 'Failed to check existing reply' }
+      if (fetchError) {
+        console.error('Error fetching current review:', fetchError)
+        return { success: false, error: 'Review not found' }
       }
 
-      if (existingReply) {
-        return { success: false, error: 'Reply already exists for this review' }
+      // Check ownership
+      if (currentReview.user_id !== userId) {
+        return { success: false, error: 'You can only edit your own reviews' }
       }
 
-      // Insert reply
-      const { error: insertError } = await supabase
-        .from('review_replies')
-        .insert([
-          {
-            review_id: reviewId,
-            business_id: businessId,
-            replied_by: replierId,
-            content: content.trim()
-          }
-        ])
+      // Check edit limit (max 2 edits)
+      if (currentReview.edit_count >= 2) {
+        return { success: false, error: 'You have reached the maximum edit limit (2 edits)' }
+      }
 
-      if (insertError) {
-        console.error('Error inserting review reply:', insertError)
-        return { success: false, error: 'Failed to add reply' }
+      // Update review
+      const { error: updateError } = await supabase
+        .from('reviews')
+        .update({
+          rating: reviewData.rating,
+          title: reviewData.title.trim() || null,
+          content: reviewData.content.trim(),
+          edit_count: currentReview.edit_count + 1,
+          edited_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reviewId)
+
+      if (updateError) {
+        console.error('Error updating review:', updateError)
+        return { success: false, error: 'Failed to update review' }
       }
 
       return { success: true, error: null }
 
     } catch (error) {
-      console.error('Unexpected error in addReviewReply:', error)
-      return { success: false, error: 'Failed to add reply' }
+      console.error('Unexpected error in updateReview:', error)
+      return { success: false, error: 'Failed to update review' }
     }
   },
+
+  /**
+   * Soft delete a review
+   */
+  async deleteReview(
+    reviewId: string,
+    userId: string
+  ): Promise<{ success: boolean; error: any }> {
+    try {
+      // Get current review to check ownership
+      const { data: currentReview, error: fetchError } = await supabase
+        .from('reviews')
+        .select('user_id')
+        .eq('id', reviewId)
+        .single()
+
+      if (fetchError) {
+        console.error('Error fetching current review:', fetchError)
+        return { success: false, error: 'Review not found' }
+      }
+
+      // Check ownership
+      if (currentReview.user_id !== userId) {
+        return { success: false, error: 'You can only delete your own reviews' }
+      }
+
+      // Soft delete
+      const { error: deleteError } = await supabase
+        .from('reviews')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reviewId)
+
+      if (deleteError) {
+        console.error('Error deleting review:', deleteError)
+        return { success: false, error: 'Failed to delete review' }
+      }
+
+      return { success: true, error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in deleteReview:', error)
+      return { success: false, error: 'Failed to delete review' }
+    }
+  },
+
+  /**
+   * Check if user can edit a review (ownership + edit limit)
+   */
+  async canEditReview(reviewId: string, userId: string): Promise<{ canEdit: boolean; editCount: number }> {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('user_id, edit_count')
+        .eq('id', reviewId)
+        .single()
+
+      if (error || !data) {
+        return { canEdit: false, editCount: 0 }
+      }
+
+      const canEdit = data.user_id === userId && data.edit_count < 2
+      return { canEdit, editCount: data.edit_count }
+
+    } catch (error) {
+      console.error('Error checking edit permission:', error)
+      return { canEdit: false, editCount: 0 }
+    }
+  },
+
+
+ /**
+ * Add business reply to review
+ */
+async addReviewReply(
+  reviewId: string,
+  businessId: string,
+  replierId: string,
+  content: string
+): Promise<{ success: boolean; error: any }> {
+  try {
+    // Check if reply already exists
+    const { data: existingReply, error: checkError } = await supabase
+      .from('review_replies')
+      .select('id')
+      .eq('review_id', reviewId)
+      .single()
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking existing reply:', checkError)
+      return { success: false, error: 'Failed to check existing reply' }
+    }
+
+    if (existingReply) {
+      return { success: false, error: 'Reply already exists for this review' }
+    }
+
+    // Verify the replier owns the business
+    const isOwner = await businessOwnerService.isBusinessOwner(replierId, businessId)
+    if (!isOwner) {
+      return { success: false, error: 'Only business owners can reply to reviews' }
+    }
+
+    // Insert reply
+    const { error: insertError } = await supabase
+      .from('review_replies')
+      .insert([
+        {
+          review_id: reviewId,
+          business_id: businessId,
+          replied_by: replierId,
+          content: content.trim()
+        }
+      ])
+
+    if (insertError) {
+      console.error('Error inserting review reply:', insertError)
+      return { success: false, error: 'Failed to add reply' }
+    }
+
+    return { success: true, error: null }
+
+  } catch (error) {
+    console.error('Unexpected error in addReviewReply:', error)
+    return { success: false, error: 'Failed to add reply' }
+  }
+},
 
   /**
    * Get review counts by status (for admin dashboard)
@@ -1102,11 +1241,61 @@ export const reviewService = {
   }
 }
 
-// Update the main export to include reviewService
+// Business Owner Service - Add this new service
+export const businessOwnerService = {
+  /**
+   * Check if user owns a specific business
+   */
+  async isBusinessOwner(userId: string, businessId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('owner_id')
+        .eq('id', businessId)
+        .single()
+      
+      if (error || !data) {
+        return false
+      }
+      
+      return data.owner_id === userId
+    } catch (error) {
+      console.error('Error checking business ownership:', error)
+      return false
+    }
+  },
+
+  /**
+   * Get businesses owned by user
+   */
+  async getUserBusinesses(userId: string): Promise<{ data: any[] | null; error: any }> {
+    try {
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('id, name, slug')
+        .eq('owner_id', userId)
+        .eq('status', 'published')
+
+      if (error) {
+        console.error('Error fetching user businesses:', error)
+        return { data: null, error }
+      }
+
+      return { data: data || [], error: null }
+
+    } catch (error) {
+      console.error('Unexpected error in getUserBusinesses:', error)
+      return { data: null, error }
+    }
+  }
+}
+
+// Update the main export to include businessOwnerService
 export default {
   business: businessService,
   location: locationService,
   category: categoryService,
   user: userService,
-  review: reviewService  // Add this line
+  review: reviewService,
+  businessOwner: businessOwnerService  // Add this line
 }

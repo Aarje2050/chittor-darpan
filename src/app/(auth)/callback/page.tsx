@@ -1,3 +1,4 @@
+// src/app/(auth)/callback/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -25,9 +26,19 @@ export default function AuthCallback() {
           console.log('✅ OAuth callback successful')
           setStatus('success')
           
-          // Redirect to profile after showing success
+          // Check for stored return URL
+          const returnUrl = localStorage.getItem('auth_return_url')
+          
+          // Redirect after showing success message
           setTimeout(() => {
-            router.push('/profile')
+            if (returnUrl && returnUrl.startsWith('/')) {
+              // Clear the stored URL and redirect to it
+              localStorage.removeItem('auth_return_url')
+              router.push(returnUrl)
+            } else {
+              // Default redirect to profile
+              router.push('/profile')
+            }
           }, 1500)
         } else {
           console.log('❌ No session in callback')
@@ -69,7 +80,7 @@ export default function AuthCallback() {
             </svg>
           </div>
           <h2 className="text-xl font-semibold text-gray-900">Welcome to Chittor Darpan!</h2>
-          <p className="text-gray-600 mt-2">Authentication successful. Redirecting to your profile...</p>
+          <p className="text-gray-600 mt-2">Authentication successful. Redirecting you now...</p>
         </div>
       </div>
     )

@@ -1,7 +1,7 @@
 // src/app/areas/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { locationService, businessService, type Area, type City } from '@/lib/database'
 import { MobileHeader } from '@/components/mobile/mobile-header'
@@ -13,6 +13,7 @@ import Head from 'next/head'
 interface AreaWithCount extends Area {
   businessCount: number
   cityName: string
+  description?: string
 }
 
 interface LocationResults {
@@ -23,7 +24,8 @@ interface LocationResults {
   totalPages: number
 }
 
-export default function AllLocationsPage() {
+// Main content component that uses useSearchParams
+function AreasPageContent() {
   const [results, setResults] = useState<LocationResults>({
     areas: [],
     cities: [],
@@ -32,7 +34,6 @@ export default function AllLocationsPage() {
     totalPages: 1
   })
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCity, setSelectedCity] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
@@ -42,15 +43,13 @@ export default function AllLocationsPage() {
 
   useEffect(() => {
     const search = searchParams.get('search') || ''
-    const city = searchParams.get('city') || 'all'
     const page = parseInt(searchParams.get('page') || '1')
     
     setSearchQuery(search)
-    setSelectedCity(city)
-    loadLocationsData(search, city, page)
+    loadAreasData(search, page)
   }, [searchParams])
 
-  const loadLocationsData = async (search: string, cityFilter: string, page: number) => {
+  const loadAreasData = async (search: string, page: number) => {
     try {
       setLoading(true)
       setError(null)
@@ -98,17 +97,10 @@ export default function AllLocationsPage() {
         }
       }
 
-      // Apply filters
+      // Apply search filter if provided
       let filteredAreas = allAreas
-
-      // Filter by city if selected
-      if (cityFilter !== 'all') {
-        filteredAreas = allAreas.filter(area => area.city_id === cityFilter)
-      }
-
-      // Filter by search if provided
       if (search.trim()) {
-        filteredAreas = filteredAreas.filter(area =>
+        filteredAreas = allAreas.filter(area =>
           area.name.toLowerCase().includes(search.toLowerCase()) ||
           area.cityName.toLowerCase().includes(search.toLowerCase()) ||
           (area.description && area.description.toLowerCase().includes(search.toLowerCase()))
@@ -139,18 +131,17 @@ export default function AllLocationsPage() {
       })
 
     } catch (err) {
-      console.error('Error loading locations:', err)
-      setError('Failed to load locations')
+      console.error('Error loading areas:', err)
+      setError('Failed to load areas')
     } finally {
       setLoading(false)
     }
   }
 
-  const updateURL = (search: string, city: string, page: number = 1) => {
+  const updateURL = (search: string, page: number = 1) => {
     const params = new URLSearchParams()
     
     if (search.trim()) params.set('search', search.trim())
-    if (city !== 'all') params.set('city', city)
     if (page > 1) params.set('page', page.toString())
 
     const newURL = `/areas${params.toString() ? `?${params.toString()}` : ''}`
@@ -159,26 +150,15 @@ export default function AllLocationsPage() {
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
-    updateURL(value, selectedCity, 1)
-  }
-
-  const handleCityChange = (city: string) => {
-    setSelectedCity(city)
-    updateURL(searchQuery, city, 1)
+    updateURL(value, 1)
   }
 
   const handlePageChange = (page: number) => {
-    updateURL(searchQuery, selectedCity, page)
+    updateURL(searchQuery, page)
   }
 
   const handleAreaClick = (area: AreaWithCount) => {
     router.push(`/area/${area.slug}`)
-  }
-
-  const handleCityClick = (city: City) => {
-    // Navigate to city-specific view
-    setSelectedCity(city.id)
-    updateURL(searchQuery, city.id, 1)
   }
 
   // SEO metadata
@@ -186,15 +166,11 @@ export default function AllLocationsPage() {
     if (searchQuery) {
       return `Areas: "${searchQuery}" - Chittor Darpan`
     }
-    if (selectedCity !== 'all') {
-      const city = results.cities.find(c => c.id === selectedCity)
-      return `Areas in ${city?.name || 'City'} - Chittor Darpan`
-    }
-    return 'All Areas & Locations - Chittor Darpan'
+    return 'Browse Areas & Locations - Chittor Darpan'
   }
 
   const getPageDescription = () => {
-    return `Browse ${results.totalCount} areas and locations in Chittorgarh. Find businesses by specific neighborhoods, areas, and localities with detailed location information.`
+    return `Browse ${results.totalCount} areas and neighborhoods in Chittorgarh. Find businesses by specific localities and areas with detailed location information.`
   }
 
   return (
@@ -209,7 +185,7 @@ export default function AllLocationsPage() {
       {/* Mobile Layout */}
       <div className="block lg:hidden min-h-screen bg-gray-50">
         <MobileHeader 
-          title="Areas & Locations"
+          title="Browse Areas"
           showBackButton
           showSearch
           searchValue={searchQuery}
@@ -218,15 +194,12 @@ export default function AllLocationsPage() {
         />
         
         <div className="px-4 py-6 space-y-6">
-          <MobileLocationsContent 
+          <MobileAreasContent 
             results={results}
             searchQuery={searchQuery}
-            selectedCity={selectedCity}
             loading={loading}
             error={error}
-            onCityChange={handleCityChange}
             onAreaClick={handleAreaClick}
-            onCityClick={handleCityClick}
             onPageChange={handlePageChange}
           />
         </div>
@@ -234,16 +207,13 @@ export default function AllLocationsPage() {
 
       {/* Desktop Layout */}
       <div className="hidden lg:block min-h-screen bg-gray-50">
-        <DesktopLocationsLayout
+        <DesktopAreasLayout
           results={results}
           searchQuery={searchQuery}
-          selectedCity={selectedCity}
           loading={loading}
           error={error}
           onSearchChange={handleSearchChange}
-          onCityChange={handleCityChange}
           onAreaClick={handleAreaClick}
-          onCityClick={handleCityClick}
           onPageChange={handlePageChange}
         />
       </div>
@@ -251,30 +221,40 @@ export default function AllLocationsPage() {
   )
 }
 
+// Main page component with Suspense wrapper
+export default function AreasPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading areas...</p>
+        </div>
+      </div>
+    }>
+      <AreasPageContent />
+    </Suspense>
+  )
+}
+
 // Mobile Content Component
-interface LocationsContentProps {
+interface AreasContentProps {
   results: LocationResults
   searchQuery: string
-  selectedCity: string
   loading: boolean
   error: string | null
-  onCityChange: (city: string) => void
   onAreaClick: (area: AreaWithCount) => void
-  onCityClick: (city: City) => void
   onPageChange: (page: number) => void
 }
 
-function MobileLocationsContent({
+function MobileAreasContent({
   results,
   searchQuery,
-  selectedCity,
   loading,
   error,
-  onCityChange,
   onAreaClick,
-  onCityClick,
   onPageChange
-}: LocationsContentProps) {
+}: AreasContentProps) {
   if (error) {
     return (
       <Card>
@@ -282,7 +262,7 @@ function MobileLocationsContent({
           <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Locations</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Areas</h3>
           <p className="text-gray-600 mb-4">{error}</p>
           <Button onClick={() => window.location.reload()}>
             Try Again
@@ -294,24 +274,12 @@ function MobileLocationsContent({
 
   return (
     <>
-      {/* Locations Header */}
-      <LocationsHeader results={results} searchQuery={searchQuery} selectedCity={selectedCity} />
-
-      {/* City Filter */}
-      <MobileCityFilter
-        cities={results.cities}
-        selectedCity={selectedCity}
-        onCityChange={onCityChange}
-      />
-
-      {/* Cities Overview (when no specific city selected) */}
-      {selectedCity === 'all' && !searchQuery && (
-        <CitiesOverview cities={results.cities} onCityClick={onCityClick} />
-      )}
+      {/* Areas Header */}
+      <AreasHeader results={results} searchQuery={searchQuery} />
 
       {/* Areas Grid */}
       {loading ? (
-        <LocationsSkeleton />
+        <AreasSkeleton />
       ) : results.areas.length > 0 ? (
         <>
           <div className="space-y-4">
@@ -327,7 +295,7 @@ function MobileLocationsContent({
           
           {/* Pagination */}
           {results.totalPages > 1 && (
-            <LocationsPagination
+            <AreasPagination
               currentPage={results.currentPage}
               totalPages={results.totalPages}
               onPageChange={onPageChange}
@@ -335,33 +303,26 @@ function MobileLocationsContent({
           )}
         </>
       ) : (
-        <LocationsEmptyState 
-          searchQuery={searchQuery} 
-          selectedCity={selectedCity}
-          cities={results.cities}
-        />
+        <AreasEmptyState searchQuery={searchQuery} />
       )}
     </>
   )
 }
 
 // Desktop Layout Component
-interface DesktopLocationsProps extends LocationsContentProps {
+interface DesktopAreasProps extends AreasContentProps {
   onSearchChange: (value: string) => void
 }
 
-function DesktopLocationsLayout({
+function DesktopAreasLayout({
   results,
   searchQuery,
-  selectedCity,
   loading,
   error,
   onSearchChange,
-  onCityChange,
   onAreaClick,
-  onCityClick,
   onPageChange
-}: DesktopLocationsProps) {
+}: DesktopAreasProps) {
   return (
     <div className="max-w-7xl mx-auto px-8 py-12">
       {/* Desktop Header */}
@@ -377,42 +338,28 @@ function DesktopLocationsLayout({
             </svg>
             Back
           </Button>
-          <h1 className="text-3xl font-bold text-gray-900">Areas & Locations</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Browse Areas</h1>
         </div>
 
-        {/* Desktop Search & Filter Bar */}
+        {/* Desktop Search Bar */}
         <Card>
           <CardContent className="p-6">
-            <div className="flex gap-4">
-              <div className="flex-1 relative">
-                <svg 
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search areas and locations..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-lg"
-                />
-              </div>
-              <select
-                value={selectedCity}
-                onChange={(e) => onCityChange(e.target.value)}
-                className="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-lg min-w-48"
+            <div className="relative max-w-md">
+              <svg 
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
               >
-                <option value="all">All Cities</option>
-                {results.cities.map(city => (
-                  <option key={city.id} value={city.id}>
-                    {city.name}
-                  </option>
-                ))}
-              </select>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search areas and neighborhoods..."
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-lg"
+              />
             </div>
           </CardContent>
         </Card>
@@ -425,7 +372,7 @@ function DesktopLocationsLayout({
             <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Locations</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Areas</h3>
             <p className="text-gray-600 mb-4">{error}</p>
             <Button onClick={() => window.location.reload()}>
               Try Again
@@ -434,14 +381,7 @@ function DesktopLocationsLayout({
         </Card>
       ) : (
         <>
-          <LocationsHeader results={results} searchQuery={searchQuery} selectedCity={selectedCity} />
-          
-          {/* Cities Overview (desktop) */}
-          {selectedCity === 'all' && !searchQuery && (
-            <div className="mt-6">
-              <DesktopCitiesOverview cities={results.cities} onCityClick={onCityClick} />
-            </div>
-          )}
+          <AreasHeader results={results} searchQuery={searchQuery} />
           
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-6">
@@ -464,7 +404,7 @@ function DesktopLocationsLayout({
               
               {results.totalPages > 1 && (
                 <div className="mt-8">
-                  <LocationsPagination
+                  <AreasPagination
                     currentPage={results.currentPage}
                     totalPages={results.totalPages}
                     onPageChange={onPageChange}
@@ -473,11 +413,7 @@ function DesktopLocationsLayout({
               )}
             </>
           ) : (
-            <LocationsEmptyState 
-              searchQuery={searchQuery} 
-              selectedCity={selectedCity}
-              cities={results.cities}
-            />
+            <AreasEmptyState searchQuery={searchQuery} />
           )}
         </>
       )}
@@ -487,20 +423,15 @@ function DesktopLocationsLayout({
 
 // Shared Components
 
-function LocationsHeader({ results, searchQuery, selectedCity }: { 
+function AreasHeader({ results, searchQuery }: { 
   results: LocationResults
   searchQuery: string
-  selectedCity: string
 }) {
   const getHeaderText = () => {
     if (searchQuery) {
       return `Areas matching "${searchQuery}"`
     }
-    if (selectedCity !== 'all') {
-      const city = results.cities.find(c => c.id === selectedCity)
-      return `Areas in ${city?.name || 'Selected City'}`
-    }
-    return 'All Areas & Locations'
+    return 'All Areas & Neighborhoods'
   }
 
   return (
@@ -519,110 +450,6 @@ function LocationsHeader({ results, searchQuery, selectedCity }: {
           <Badge variant="secondary" className="lg:text-sm">
             {results.totalCount}
           </Badge>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function MobileCityFilter({ cities, selectedCity, onCityChange }: {
-  cities: City[]
-  selectedCity: string
-  onCityChange: (city: string) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Filter by City</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        <select
-          value={selectedCity}
-          onChange={(e) => onCityChange(e.target.value)}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-        >
-          <option value="all">All Cities</option>
-          {cities.map(city => (
-            <option key={city.id} value={city.id}>
-              {city.name}
-            </option>
-          ))}
-        </select>
-      </CardContent>
-    </Card>
-  )
-}
-
-function CitiesOverview({ cities, onCityClick }: {
-  cities: City[]
-  onCityClick: (city: City) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Browse by City</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        <div className="grid grid-cols-1 gap-3">
-          {cities.map(city => (
-            <Button
-              key={city.id}
-              variant="outline"
-              onClick={() => onCityClick(city)}
-              className="justify-start h-auto p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-100 to-green-200 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <div className="font-medium">{city.name}</div>
-                  <div className="text-sm text-gray-500">{city.state}</div>
-                </div>
-              </div>
-            </Button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function DesktopCitiesOverview({ cities, onCityClick }: {
-  cities: City[]
-  onCityClick: (city: City) => void
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Browse by City</CardTitle>
-      </CardHeader>
-      <CardContent className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cities.map(city => (
-            <Button
-              key={city.id}
-              variant="outline"
-              onClick={() => onCityClick(city)}
-              className="justify-start h-auto p-6 hover:shadow-lg transition-shadow"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <div className="font-semibold text-lg">{city.name}</div>
-                  <div className="text-gray-500">{city.state}</div>
-                </div>
-              </div>
-            </Button>
-          ))}
         </div>
       </CardContent>
     </Card>
@@ -769,7 +596,7 @@ function AreaDesktopCard({ area, onClick, searchQuery }: {
   )
 }
 
-function LocationsPagination({ currentPage, totalPages, onPageChange }: {
+function AreasPagination({ currentPage, totalPages, onPageChange }: {
   currentPage: number
   totalPages: number
   onPageChange: (page: number) => void
@@ -848,13 +675,7 @@ function LocationsPagination({ currentPage, totalPages, onPageChange }: {
   )
 }
 
-function LocationsEmptyState({ searchQuery, selectedCity, cities }: {
-  searchQuery: string
-  selectedCity: string
-  cities: City[]
-}) {
-  const selectedCityName = cities.find(c => c.id === selectedCity)?.name
-  
+function AreasEmptyState({ searchQuery }: { searchQuery: string }) {
   return (
     <Card>
       <CardContent className="p-8 lg:p-12 text-center">
@@ -865,17 +686,9 @@ function LocationsEmptyState({ searchQuery, selectedCity, cities }: {
         
         <h3 className="text-xl lg:text-2xl font-medium text-gray-900 mb-2">No areas found</h3>
         
-        {searchQuery && selectedCity !== 'all' ? (
-          <p className="text-gray-600 mb-4 lg:text-lg">
-            No areas match "{searchQuery}" in {selectedCityName}.
-          </p>
-        ) : searchQuery ? (
+        {searchQuery ? (
           <p className="text-gray-600 mb-4 lg:text-lg">
             No areas match "{searchQuery}". Try a different search term.
-          </p>
-        ) : selectedCity !== 'all' ? (
-          <p className="text-gray-600 mb-4 lg:text-lg">
-            No areas found in {selectedCityName}.
           </p>
         ) : (
           <p className="text-gray-600 mb-4 lg:text-lg">
@@ -892,7 +705,7 @@ function LocationsEmptyState({ searchQuery, selectedCity, cities }: {
 }
 
 // Loading Skeletons
-function LocationsSkeleton() {
+function AreasSkeleton() {
   return (
     <div className="space-y-4">
       {Array.from({ length: 6 }).map((_, i) => (

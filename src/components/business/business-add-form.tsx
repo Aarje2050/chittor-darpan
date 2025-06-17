@@ -196,10 +196,7 @@ export default function BusinessAddForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!user?.id) {
-      alert('You must be logged in to add a business')
-      return
-    }
+    
 
     if (!validateForm()) {
       // Scroll to first error
@@ -212,7 +209,7 @@ export default function BusinessAddForm() {
     try {
       setSubmitting(true)
 
-      const { data, error } = await businessService.create(formData, user.id)
+      const { data, error } = await businessService.create(formData, user!.id)
 
       if (error) {
         throw new Error(error.message || 'Failed to create business listing')

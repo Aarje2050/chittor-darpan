@@ -3,6 +3,10 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { useRouter } from 'next/navigation'
+import { businessService, userService } from './database'
+
+
 
 interface AuthContextType {
   user: User | null
@@ -148,4 +152,140 @@ export function useRequireAuth() {
   }, [user, loading])
 
   return { user, loading, shouldRedirect }
+}
+
+// Extended auth hook with role checking
+export function useAuthWithRole() {
+  const { user, loading } = useAuth()
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [roleLoading, setRoleLoading] = useState(true)
+
+  useEffect(() => {
+    if (user && !userRole) {
+      const fetchRole = async () => {
+        try {
+          const { data: role } = await userService.getCurrentUserRole(user.id)
+          setUserRole(role || 'user')
+        } catch (error) {
+          console.error('Error fetching user role:', error)
+          setUserRole('user')
+        } finally {
+          setRoleLoading(false)
+        }
+      }
+      fetchRole()
+    } else if (!user && !loading) {
+      setUserRole(null)
+      setRoleLoading(false)
+    }
+  }, [user, loading, userRole])
+
+  return {
+    user,
+    userRole,
+    loading: loading || roleLoading,
+    isAuthenticated: !!user,
+    isAdmin: userRole === 'admin',
+    isBusinessOwner: userRole === 'business_owner' || userRole === 'admin',
+    isUser: userRole === 'user'
+  }
+}
+
+// Role-based route protection hook
+export function useRoleGuard(
+  allowedRoles: ('user' | 'business_owner' | 'admin')[],
+  redirectTo: string = '/login'
+) {
+  const router = useRouter()
+  const { user, userRole, loading } = useAuthWithRole()
+  const [hasAccess, setHasAccess] = useState(false)
+  const [checkComplete, setCheckComplete] = useState(false)
+
+  useEffect(() => {
+    if (!loading) {
+      // Not authenticated - redirect to login
+      if (!user) {
+        router.push(redirectTo)
+        return
+      }
+
+      // Check role permission
+      if (userRole) {
+        const hasPermission = allowedRoles.includes(userRole as any)
+        setHasAccess(hasPermission)
+        setCheckComplete(true)
+
+        // If no permission and not going to an error page, redirect
+        if (!hasPermission && !redirectTo.includes('unauthorized')) {
+          router.push(`/unauthorized?required=${allowedRoles.join(',')}&current=${userRole}`)
+        }
+      }
+    }
+  }, [user, userRole, loading, allowedRoles, redirectTo, router])
+
+  return {
+    hasAccess,
+    loading,
+    checkComplete,
+    user,
+    userRole
+  }
+}
+
+// Quick check functions for components
+export function useIsAdmin() {
+  const { isAdmin, loading } = useAuthWithRole()
+  return { isAdmin, loading }
+}
+
+export function useIsBusinessOwner() {
+  const { isBusinessOwner, loading } = useAuthWithRole()
+  return { isBusinessOwner, loading }
+}
+
+// Check if user owns specific business
+export function useBusinessOwnership(businessId: string) {
+  const { user, userRole, loading } = useAuthWithRole()
+  const [isOwner, setIsOwner] = useState(false)
+  const [checkLoading, setCheckLoading] = useState(true)
+
+  useEffect(() => {
+    const checkOwnership = async () => {
+      if (!user || !businessId || loading) {
+        setCheckLoading(false)
+        return
+      }
+
+      // Admins have access to all businesses
+      if (userRole === 'admin') {
+        setIsOwner(true)
+        setCheckLoading(false)
+        return
+      }
+
+      // Check if user owns this specific business
+      try {
+        const { data: businesses } = await businessService.getBusinesses({
+          ownerId: user.id,
+          status: 'all'
+        })
+
+        const ownsThisBusiness = businesses?.some(b => b.id === businessId) || false
+        setIsOwner(ownsThisBusiness)
+      } catch (error) {
+        console.error('Error checking business ownership:', error)
+        setIsOwner(false)
+      } finally {
+        setCheckLoading(false)
+      }
+    }
+
+    checkOwnership()
+  }, [user, businessId, userRole, loading])
+
+  return {
+    isOwner,
+    loading: loading || checkLoading,
+    userRole
+  }
 }

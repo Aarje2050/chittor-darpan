@@ -133,7 +133,7 @@ export default function BusinessOwnerListings() {
           <p className="text-gray-600">Manage and update your business information</p>
         </div>
         <Button 
-          onClick={() => router.push('/dashboard/business/add-business')}
+          onClick={() => router.push('/add-business')}
           className="bg-black text-white hover:bg-gray-800"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -239,7 +239,7 @@ export default function BusinessOwnerListings() {
                 }
               </p>
               {businesses.length === 0 && statusFilter === 'all' && (
-                <Button onClick={() => router.push('/dashboard/business/add-business')}>
+                <Button onClick={() => router.push('/add-business')}>
                   Add Your First Business
                 </Button>
               )}
