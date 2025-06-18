@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Head from 'next/head'
+import TourismReviews from '@/components/tourism/tourism-reviews'
 
 export default function TourismPlacePage() {
   const [place, setPlace] = useState<TourismPlace | null>(null)
@@ -82,6 +83,8 @@ export default function TourismPlacePage() {
             <meta property="place:location:longitude" content={place.longitude.toString()} />
           </>
         )}
+
+        
       </Head>
 
       {/* Mobile Layout */}
@@ -145,6 +148,7 @@ function MobileTourismPlaceContent({ place }: { place: TourismPlace }) {
                   {place.area_name ? `${place.area_name}, ` : ''}{place.city_name}
                 </span>
               </div>
+
             </div>
           </div>
 
@@ -273,6 +277,13 @@ function MobileTourismPlaceContent({ place }: { place: TourismPlace }) {
           </CardContent>
         </Card>
       )}
+
+
+              {/* Reviews Section */}
+<TourismReviews 
+  placeId={place.id} 
+  placeName={place.name} 
+/>
 
       {/* Related Places */}
       <Card>
@@ -429,6 +440,13 @@ function DesktopTourismPlaceContent({ place }: { place: TourismPlace }) {
               </CardContent>
             </Card>
           )}
+          {/* Reviews Section */}
+<div className="lg:col-span-3">
+  <TourismReviews 
+    placeId={place.id} 
+    placeName={place.name} 
+  />
+</div>
         </div>
 
         {/* Sidebar */}

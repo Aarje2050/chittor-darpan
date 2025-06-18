@@ -225,7 +225,7 @@ export interface TourismPlace {
   duration: string | null
   
   // Status
-  status: 'pending' | 'published' | 'rejected' | 'draft'
+  status: 'published' | 'rejected' | 'draft'
   is_featured: boolean
   
   // SEO

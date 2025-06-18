@@ -3,6 +3,20 @@
 
 import { supabase } from './supabase'
 
+// Import all services from separate files
+import { 
+  tourismService, 
+  tourismImageService, 
+  tourismReviewService,
+  type TourismPlace,
+  type TourismFormData,
+  type TourismCounts,
+  type TourismImage,
+  type TourismReview,
+  type TourismReviewImage,
+  type TourismReviewFormData
+} from './services/tourism'
+
 // Types for better type safety
 export interface Business {
   id: string
@@ -13,7 +27,7 @@ export interface Business {
   phone: string[] | null
   email: string | null
   website: string | null
-  status: 'pending' | 'published' | 'rejected' | 'suspended'
+  status:  'published' | 'rejected' | 'suspended' | 'pending'
   is_featured: boolean
   is_verified: boolean
   created_at: string
@@ -1293,307 +1307,25 @@ export const businessOwnerService = {
   }
 }
 
-// Tourism Service - All tourism-related database operations
-export const tourismService = {
-  /**
-   * Get tourism places with optional filters
-   */
-  async getTourismPlaces(filters: any = {}): Promise<{ data: any[] | null; error: any }> {
-    try {
-      let query = supabase
-        .from('tourism_places')
-        .select(`
-          *,
-          cities:city_id(name),
-          areas:area_id(name),
-          categories:category_id(name),
-          profiles:created_by(full_name, email)
-        `)
-        .order('created_at', { ascending: false })
-
-      // Apply filters
-      if (filters.status) {
-        query = query.eq('status', filters.status)
-      }
-
-      if (filters.search?.trim()) {
-        query = query.ilike('name', `%${filters.search.trim()}%`)
-      }
-
-      if (filters.categorySlug) {
-        // Get category ID by slug first
-        const { data: category } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('slug', filters.categorySlug)
-          .eq('feature_type', 'tourism')
-          .single()
-
-        if (category) {
-          query = query.eq('category_id', category.id)
-        }
-      }
-
-      if (filters.categoryId) {
-        query = query.eq('category_id', filters.categoryId)
-      }
-
-      if (filters.city) {
-        query = query.eq('city_id', filters.city)
-      }
-
-      if (filters.area) {
-        query = query.eq('area_id', filters.area)
-      }
-
-      if (filters.featured) {
-        query = query.eq('is_featured', true)
-      }
-
-      if (filters.limit) {
-        query = query.limit(filters.limit)
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        console.error('Error fetching tourism places:', error)
-        return { data: null, error }
-      }
-
-      // Transform data to include related info
-      const tourismPlaces = (data || []).map(item => ({
-        ...item,
-        city_name: item.cities?.name || 'Unknown City',
-        area_name: item.areas?.name || null,
-        category_name: item.categories?.name || null,
-        creator_name: item.profiles?.full_name || null,
-        creator_email: item.profiles?.email || null
-      }))
-
-      return { data: tourismPlaces, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in getTourismPlaces:', error)
-      return { data: null, error }
-    }
-  },
-
-  /**
-   * Get tourism place by slug
-   */
-  async getTourismPlaceBySlug(slug: string): Promise<{ data: any | null; error: any }> {
-    try {
-      const { data, error } = await supabase
-        .from('tourism_places')
-        .select(`
-          *,
-          cities:city_id(name),
-          areas:area_id(name),
-          categories:category_id(name),
-          profiles:created_by(full_name, email)
-        `)
-        .eq('slug', slug)
-        .eq('status', 'published')
-        .single()
-
-      if (error) {
-        console.error('Error fetching tourism place by slug:', error)
-        return { data: null, error }
-      }
-
-      const tourismPlace = {
-        ...data,
-        city_name: data.cities?.name || 'Unknown City',
-        area_name: data.areas?.name || null,
-        category_name: data.categories?.name || null,
-        creator_name: data.profiles?.full_name || null,
-        creator_email: data.profiles?.email || null
-      }
-
-      return { data: tourismPlace, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in getTourismPlaceBySlug:', error)
-      return { data: null, error }
-    }
-  },
-
-  /**
-   * Get tourism categories
-   */
-  async getTourismCategories(): Promise<{ data: any[] | null; error: any }> {
-    try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('id, name, slug, description')
-        .eq('feature_type', 'tourism')
-        .eq('is_active', true)
-        .order('sort_order')
-
-      if (error) {
-        console.error('Error fetching tourism categories:', error)
-        return { data: null, error }
-      }
-
-      return { data: data || [], error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in getTourismCategories:', error)
-      return { data: null, error }
-    }
-  },
-
-  /**
-   * Get tourism place counts (for admin)
-   */
-  async getTourismCounts(): Promise<{ data: any | null; error: any }> {
-    try {
-      const { data, error } = await supabase
-        .from('tourism_places')
-        .select('status')
-
-      if (error) {
-        console.error('Error getting tourism counts:', error)
-        return { data: null, error }
-      }
-
-      const counts = {
-        total: data?.length || 0,
-        pending: data?.filter(t => t.status === 'draft').length || 0, // Use 'draft' instead of 'pending'
-        published: data?.filter(t => t.status === 'published').length || 0,
-        rejected: data?.filter(t => t.status === 'rejected').length || 0
-      }
-
-      return { data: counts, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in getTourismCounts:', error)
-      return { data: null, error }
-    }
-  },
-
-  /**
-   * Create new tourism place (admin only)
-   */
-  async createTourismPlace(formData: any, adminId: string): Promise<{ data: any | null; error: any }> {
-    try {
-      // Generate unique slug from name
-      const baseSlug = formData.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-
-      // Check if slug exists and make it unique
-      let slug = baseSlug
-      let counter = 1
-      let slugExists = true
-
-      while (slugExists) {
-        const { data: existingPlace } = await supabase
-          .from('tourism_places')
-          .select('slug')
-          .eq('slug', slug)
-          .single()
-
-        if (!existingPlace) {
-          slugExists = false
-        } else {
-          slug = `${baseSlug}-${counter}`
-          counter++
-        }
-      }
-
-      const tourismData = {
-        name: formData.name.trim(),
-        slug: slug,
-        description: formData.description?.trim() || null,
-        short_description: formData.short_description?.trim() || null,
-        city_id: formData.city_id,
-        area_id: formData.area_id || null,
-        category_id: formData.category_id,
-        address: formData.address?.trim() || null,
-        latitude: formData.latitude || null,
-        longitude: formData.longitude || null,
-        entry_fee: formData.entry_fee?.trim() || null,
-        timings: formData.timings?.trim() || null,
-        best_time_to_visit: formData.best_time_to_visit?.trim() || null,
-        duration: formData.duration?.trim() || null,
-        status: formData.status || 'draft', // Use provided status (draft/published)
-        is_featured: formData.is_featured || false,
-        created_by: adminId
-      }
-
-      const { data, error } = await supabase
-        .from('tourism_places')
-        .insert([tourismData])
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Error creating tourism place:', error)
-        return { data: null, error }
-      }
-
-      return { data, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in createTourismPlace:', error)
-      return { data: null, error }
-    }
-  },
-
-  /**
-   * Update tourism place status (admin function)
-   */
-  async updateTourismStatus(id: string, status: string): Promise<{ success: boolean; error: any }> {
-    try {
-      const { error } = await supabase
-        .from('tourism_places')
-        .update({ 
-          status,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-
-      if (error) {
-        console.error('Error updating tourism status:', error)
-        return { success: false, error }
-      }
-
-      return { success: true, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in updateTourismStatus:', error)
-      return { success: false, error }
-    }
-  },
-
-  /**
-   * Delete tourism place (admin function)
-   */
-  async deleteTourismPlace(id: string): Promise<{ success: boolean; error: any }> {
-    try {
-      const { error } = await supabase
-        .from('tourism_places')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        console.error('Error deleting tourism place:', error)
-        return { success: false, error }
-      }
-
-      return { success: true, error: null }
-
-    } catch (error) {
-      console.error('Unexpected error in deleteTourismPlace:', error)
-      return { success: false, error }
-    }
-  }
+// Export all services
+export {
+  tourismService,
+  tourismImageService,
+  tourismReviewService
 }
 
-// Update the main export to include all services
+// Export all types
+export type {
+  TourismPlace,
+  TourismFormData,
+  TourismCounts,
+  TourismImage,
+  TourismReview,
+  TourismReviewImage,
+  TourismReviewFormData,
+}
+
+// Update the main export to include new services
 export default {
   business: businessService,
   location: locationService,
@@ -1601,5 +1333,7 @@ export default {
   user: userService,
   review: reviewService,
   businessOwner: businessOwnerService,
-  tourism: tourismService  // Add tourism service
+  tourism: tourismService,
+  tourismImage: tourismImageService,  // Add image service
+  tourismReview: tourismReviewService  // Add review service
 }
