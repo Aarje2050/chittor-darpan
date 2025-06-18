@@ -202,4 +202,87 @@ export interface BaseEntity {
     recommendation_reason: string | null
   }
   
+  // Tourism-specific interfaces
+export interface TourismPlace {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  short_description: string | null
   
+  // Location
+  city_id: string | null
+  area_id: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  
+  // Tourism specific
+  category_id: string | null
+  entry_fee: string | null
+  timings: string | null
+  best_time_to_visit: string | null
+  duration: string | null
+  
+  // Status
+  status: 'pending' | 'published' | 'rejected' | 'draft'
+  is_featured: boolean
+  
+  // SEO
+  meta_title: string | null
+  meta_description: string | null
+  
+  // Audit
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  
+  // Related data (populated by joins)
+  city_name?: string
+  area_name?: string | null
+  category_name?: string | null
+  creator_name?: string | null
+  creator_email?: string | null
+}
+
+export interface TourismFilters {
+  status?: 'all' | 'pending' | 'published' | 'rejected'
+  search?: string
+  category?: string
+  categorySlug?: string
+  city?: string
+  area?: string
+  featured?: boolean
+  limit?: number
+}
+
+export interface TourismFormData {
+  name: string
+  description: string
+  short_description: string
+  address: string
+  city_id: string
+  area_id?: string
+  category_id: string
+  entry_fee?: string
+  timings?: string
+  best_time_to_visit?: string
+  duration?: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface TourismCounts {
+  total: number
+  pending: number
+  published: number
+  rejected: number
+}
+
+export interface TourismCategory {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  count?: number
+}

@@ -11,6 +11,7 @@ import DashboardLayout from '@/components/admin/dashboard-layout'
 const ROUTE_PERMISSIONS = {
   '/dashboard/admin': ['admin'],
   '/dashboard/admin/listings': ['admin'],
+  '/dashboard/admin/tourism/add': ['admin'],
   '/dashboard/business': ['business_owner', 'admin'],
   '/dashboard/business/edit': ['business_owner', 'admin'],
   '/dashboard/business/my-listings': ['business_owner', 'admin']
