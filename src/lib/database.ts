@@ -64,6 +64,7 @@ export interface City {
   id: string
   name: string
   slug: string
+  state?: string
 }
 
 export interface Area {
@@ -71,6 +72,8 @@ export interface Area {
   name: string
   slug: string
   city_id: string
+  description?: string
+  
 }
 
 export interface Category {
