@@ -12,6 +12,7 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
+  
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   // Future methods (will implement later)
