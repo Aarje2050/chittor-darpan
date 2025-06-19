@@ -1,35 +1,10 @@
-interface UserProfile {
-  id: string
-  email: string
-  full_name: string | null
-  phone: string | null
-  avatar_url: string | null
-  user_type: 'user' | 'business_owner' | 'admin'
-  is_verified: boolean
-  created_at: string
-}
-
-interface UserStats {
-  reviewsCount: number
-  businessesCount: number
-  joinDate: string
-  profileCompletion: number
-}
-
-interface UserActivity {
-  id: string
-  type: 'review' | 'business'
-  title: string
-  description: string
-  date: string
-  link?: string
-}// src/app/profile/page.tsx
+// src/app/profile/page.tsx
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { userService, type UserProfile, type UserStats } from '@/lib/services/user'
+import { UserActivityItem, userService, type UserProfile, type UserStats } from '@/lib/services/user'
 import { MobileHeader } from '@/components/mobile/mobile-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -40,7 +15,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [stats, setStats] = useState<UserStats | null>(null)
-  const [activity, setActivity] = useState<UserActivity[]>([])
+  const [activity, setActivity] = useState<UserActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
