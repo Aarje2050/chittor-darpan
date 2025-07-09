@@ -9,7 +9,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
-    domains: ['localhost', 'your-supabase-storage-url'],
+    domains: ['localhost', 'fvhbbkkydocfeahhbqam.supabase.co'],
   },
   async redirects() {
     return [

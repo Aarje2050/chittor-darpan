@@ -73,7 +73,7 @@ export default function AddBusinessPage() {
 
       {/* Benefits Section - Mobile Optimized */}
       <div className="px-4 py-6">
-        <div className="bg-blue-50 rounded-lg p-4 mb-6">
+        {/* <div className="bg-blue-50 rounded-lg p-4 mb-6">
           <h2 className="text-lg font-semibold text-blue-900 mb-3">
             Why list with us?
           </h2>
@@ -115,7 +115,7 @@ export default function AddBusinessPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Business Form */}
         <div className="bg-white rounded-lg shadow-sm border">

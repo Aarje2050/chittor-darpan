@@ -4,6 +4,8 @@ import './globals.css'
 import { cn } from '@/lib/utils'
 import { BottomNavigation, type NavigationItem } from '@/components/mobile/bottom-navigation'
 import { AuthProvider } from '@/lib/auth'
+import Header from '@/components/layout/header'
+
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -158,30 +160,33 @@ export default function RootLayout({
           Skip to main content
         </a>
 
-        {/* Auth Provider Wrapper */}
-        <AuthProvider>
-          {/* Main app container */}
-          <div className="flex flex-col min-h-screen">
-            {/* Main content area */}
-            <main 
-              id="main-content"
-              className={cn(
-                'flex-1',
-                // Account for bottom navigation on mobile
-                'pb-16 md:pb-0'
-              )}
-            >
-              {children}
-            </main>
+       {/* Auth Provider Wrapper */}
+<AuthProvider>
+  {/* Main app container */}
+  <div className="flex flex-col min-h-screen">
+    {/* ADD THIS: Desktop/Universal Header */}
+    <Header />
+    
+    {/* Main content area */}
+    <main 
+      id="main-content"
+      className={cn(
+        'flex-1',
+        // Account for bottom navigation on mobile
+        'pb-16 md:pb-0'
+      )}
+    >
+      {children}
+    </main>
 
-            {/* Mobile bottom navigation */}
-            <BottomNavigation 
-              items={mainNavItems}
-              showLabels={true}
-              autoHide={true}
-            />
-          </div>
-        </AuthProvider>
+    {/* Mobile bottom navigation */}
+    <BottomNavigation 
+      items={mainNavItems}
+      showLabels={true}
+      autoHide={true}
+    />
+  </div>
+</AuthProvider>
 
         {/* Global loading indicator (for future use) */}
         <div id="global-loading" className="hidden">

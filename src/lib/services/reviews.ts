@@ -415,5 +415,32 @@ export const reviewService = {
       console.error('💥 Unexpected error in deleteReview:', error)
       return { success: false, error: 'Failed to delete review' }
     }
+  },
+
+  /**
+   * Get the total number of reviews for a business
+   */
+  async getReviewCounts(businessId: string): Promise<{ count: number; error: any }> {
+    try {
+      console.log('🔢 Fetching review count for business:', businessId)
+
+      // Query the reviews table to count the number of reviews for the business
+      const { count, error } = await supabase
+        .from('reviews')
+        .select('id', { count: 'exact' }) // Use 'exact' to get the total count
+        .eq('business_id', businessId)
+        .eq('status', 'published') // Only count published reviews
+
+      if (error) {
+        console.error('❌ Error fetching review count:', error)
+        return { count: 0, error }
+      }
+
+      console.log('✅ Review count fetched successfully:', count)
+      return { count: count || 0, error: null }
+    } catch (error) {
+      console.error('💥 Unexpected error in getReviewCounts:', error)
+      return { count: 0, error }
+    }
   }
 }

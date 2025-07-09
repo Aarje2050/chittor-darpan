@@ -14,14 +14,15 @@ interface DashboardStats {
 }
 
 export default function AdminOverview() {
-  const [reviewCounts, setReviewCounts] = useState({ pending: 0, published: 0, total: 0 })
+  const [ReviewStats, getReviewStats] = useState({ pending: 0, published: 0, total: 0 })
   
   useEffect(() => {
     const loadReviewCounts = async () => {
       try {
-        const { data } = await reviewService.getReviewCounts()
+        const businessId = 'someBusinessId'; // Replace with the actual business ID you want to use
+        const { data } = await reviewService.getReviewStats(businessId)
         if (data) {
-          setReviewCounts(data)
+          getReviewStats(data)
         }
       } catch (error) {
         console.error('Error loading review counts:', error)
@@ -174,7 +175,7 @@ export default function AdminOverview() {
 
 <Card>
   <CardContent className="p-4 text-center">
-    <div className="text-2xl font-bold text-yellow-600">{reviewCounts?.pending || 0}</div>
+    <div className="text-2xl font-bold text-yellow-600">{ReviewStats?.pending || 0}</div>
     <div className="text-sm text-gray-600">Pending Reviews</div>
   </CardContent>
 </Card>

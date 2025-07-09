@@ -1,4 +1,4 @@
-// src/components/business/business-add-form.tsx - CLEAN VERSION
+// src/components/business/proper-business-form.tsx - FIXED IMPLEMENTATION
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -8,11 +8,9 @@ import {
   businessService, 
   locationService, 
   categoryService,
-  draftService, // NEW: Using separate draft service
   type City,
   type Area,
-  type Category,
-  type BusinessDraftData
+  type Category
 } from '@/lib/database'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
@@ -24,115 +22,8 @@ import {
   Bold, Italic, List, ListOrdered, Save, ChevronLeft, ChevronRight, Search
 } from 'lucide-react'
 
-// ====================================
-// 1. FIXED: Proper Media Library Service
-// ====================================
 
-const mediaLibraryService = {
-  // Get ALL user images (no type filtering - show everywhere)
-  async getUserImages(userId: string) {
-    try {
-      console.log('🔍 Loading images for user:', userId)
-      
-      // Method 1: Try to get from user_media_library table (if exists)
-      const { data: libraryImages, error: libraryError } = await supabase
-        .from('user_media_library')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (!libraryError && libraryImages && libraryImages.length > 0) {
-        console.log('✅ Found images in media library:', libraryImages.length)
-        return libraryImages.map(img => ({
-          id: img.id,
-          name: img.original_name || img.image_path,
-          url: img.image_url,
-          created_at: img.created_at,
-          type: img.image_type || 'unknown'
-        }))
-      }
-
-      // Method 2: Fallback - scan storage bucket for user's folder
-      console.log('📁 Scanning storage bucket for user folder...')
-      const { data: files, error: storageError } = await supabase.storage
-        .from('business-images')
-        .list(userId, {
-          limit: 100,
-          sortBy: { column: 'created_at', order: 'desc' }
-        })
-
-      if (storageError) {
-        console.error('❌ Storage error:', storageError)
-        return []
-      }
-
-      if (!files || files.length === 0) {
-        console.log('📭 No images found in storage')
-        return []
-      }
-
-      // Convert storage files to image objects
-      const imageList = files
-        .filter(file => {
-          // Only include actual image files, not folders
-          return file.name && 
-                 !file.name.endsWith('/') && 
-                 /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)
-        })
-        .map(file => {
-          const { data: urlData } = supabase.storage
-            .from('business-images')
-            .getPublicUrl(`${userId}/${file.name}`)
-          
-          return {
-            id: file.name,
-            name: file.name,
-            url: urlData.publicUrl,
-            created_at: file.created_at || new Date().toISOString(),
-            type: 'storage' // Mark as storage-sourced
-          }
-        })
-
-      console.log('✅ Found images in storage:', imageList.length)
-      return imageList
-
-    } catch (error) {
-      console.error('💥 Error loading user images:', error)
-      return []
-    }
-  },
-
-  // Save uploaded image to library (for future tracking)
-  async saveToLibrary(userId: string, imageData: any) {
-    try {
-      // Try to save to media library table for future use
-      const { data, error } = await supabase
-        .from('user_media_library')
-        .insert([{
-          user_id: userId,
-          image_url: imageData.url,
-          image_path: imageData.path,
-          original_name: imageData.originalName,
-          file_size: imageData.size,
-          image_type: imageData.type,
-          created_at: new Date().toISOString()
-        }])
-        .select()
-
-      if (error) {
-        console.log('⚠️ Media library table not found, skipping save')
-        // Table doesn't exist yet - that's ok
-      }
-
-      return { data, error }
-    } catch (error) {
-      console.log('⚠️ Could not save to media library:', error)
-      return { data: null, error }
-    }
-  }
-}
-
-// Simple Rich Text Editor
+// Simple Rich Text Editor (Fixed Width)
 function RichTextEditor({ value, onChange, placeholder, maxLength = 500, error }: any) {
   const [focused, setFocused] = useState(false)
 
@@ -186,6 +77,7 @@ function RichTextEditor({ value, onChange, placeholder, maxLength = 500, error }
         <span className="text-xs text-gray-500">{value.length}/{maxLength}</span>
       </div>
       
+      {/* Editor - FIXED: Better mobile width */}
       <textarea
         id="rich-editor"
         value={value}
@@ -291,24 +183,47 @@ function CategorySelector({ categories, selected, onChange, error }: any) {
   )
 }
 
-// ====================================
-// 3. FIXED: Image Library Component
-// ====================================
-
-function ProperImageLibrary({ userId, onSelect, onClose }: any) {
+// FIXED: Working Image Library
+function ImageLibrary({ userId, imageType, onSelect, onClose }: any) {
   const [images, setImages] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
-    loadAllUserImages()
+    loadUserImages()
   }, [userId])
 
-  const loadAllUserImages = async () => {
+  // FIXED: Load existing images from storage
+  const loadUserImages = async () => {
     try {
       setLoading(true)
-      const userImages = await mediaLibraryService.getUserImages(userId)
-      setImages(userImages)
+      
+      // Get user's existing images from storage
+      const { data: files, error } = await supabase.storage
+        .from('business-images')
+        .list(userId, {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' }
+        })
+
+      if (files) {
+        const imageList = files
+          .filter(file => file.name.includes(imageType) || imageType === 'gallery')
+          .map(file => {
+            const { data: urlData } = supabase.storage
+              .from('business-images')
+              .getPublicUrl(`${userId}/${file.name}`)
+            
+            return {
+              id: file.name,
+              name: file.name,
+              url: urlData.publicUrl,
+              created_at: file.created_at
+            }
+          })
+        
+        setImages(imageList)
+      }
     } catch (error) {
       console.error('Error loading images:', error)
     } finally {
@@ -316,61 +231,38 @@ function ProperImageLibrary({ userId, onSelect, onClose }: any) {
     }
   }
 
+  // FIXED: Working image upload
   const handleImageUpload = async (file: File) => {
     try {
       setUploading(true)
       
-      console.log('📤 Uploading image:', file.name)
-      
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+      const fileName = `${imageType}-${Date.now()}.${fileExt}`
       const filePath = `${userId}/${fileName}`
 
-      // Upload to storage
       const { data, error } = await supabase.storage
         .from('business-images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        })
+        .upload(filePath, file)
 
-      if (error) {
-        console.error('❌ Upload error:', error)
-        throw error
-      }
+      if (error) throw error
 
-      console.log('✅ Upload successful:', data)
-
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('business-images')
         .getPublicUrl(filePath)
 
+      // Add to list and auto-select
       const newImage = {
         id: fileName,
-        name: file.name,
+        name: fileName,
         url: urlData.publicUrl,
-        created_at: new Date().toISOString(),
-        type: 'uploaded'
+        created_at: new Date().toISOString()
       }
-
-      // Save to media library for future tracking
-      await mediaLibraryService.saveToLibrary(userId, {
-        url: newImage.url,
-        path: filePath,
-        originalName: file.name,
-        size: file.size,
-        type: 'uploaded'
-      })
-
-      // Add to current list and auto-select
+      
       setImages(prev => [newImage, ...prev])
       onSelect(newImage.url)
       
-      console.log('🎉 Image ready:', newImage.url)
-      
     } catch (error) {
-      console.error('💥 Upload failed:', error)
+      console.error('Upload error:', error)
       alert('Upload failed. Please try again.')
     } finally {
       setUploading(false)
@@ -379,22 +271,17 @@ function ProperImageLibrary({ userId, onSelect, onClose }: any) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[85vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold">Choose Image</h3>
-          <button 
-            onClick={onClose} 
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
+      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-semibold">Choose {imageType} image</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[70vh]">
-          {/* Upload Section */}
+        <div className="p-4">
+          {/* Upload Area */}
           <div className="mb-6">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Upload New Image</h4>
             <input
               type="file"
               accept="image/*"
@@ -405,67 +292,44 @@ function ProperImageLibrary({ userId, onSelect, onClose }: any) {
             />
             <label
               htmlFor="image-upload"
-              className={`block w-full p-6 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all ${
-                uploading 
-                  ? 'border-gray-300 bg-gray-50 cursor-not-allowed' 
-                  : 'border-blue-300 hover:border-blue-400 hover:bg-blue-50'
+              className={`block w-full p-6 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${
+                uploading ? 'border-gray-300 bg-gray-50' : 'border-blue-300 hover:border-blue-400 hover:bg-blue-50'
               }`}
             >
-              {uploading ? (
-                <div>
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p className="text-sm font-medium text-blue-600">Uploading...</p>
-                </div>
-              ) : (
-                <div>
-                  <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500" />
-                  <p className="text-sm font-medium text-blue-600">Click to upload new image</p>
-                  <p className="text-xs text-gray-500 mt-1">JPG, PNG, GIF up to 5MB</p>
-                </div>
-              )}
+              <Upload className="w-6 h-6 mx-auto mb-2 text-blue-500" />
+              <p className="text-sm font-medium text-blue-600">
+                {uploading ? 'Uploading...' : 'Click to upload new image'}
+              </p>
             </label>
           </div>
 
-          {/* All User Images */}
+          {/* Existing Images */}
           <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-3">
-              Your Images ({images.length})
-              {images.length > 0 && <span className="text-xs text-gray-500 ml-2">• Click any image to select</span>}
-            </h4>
-            
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Your existing images ({images.length})</h4>
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading your images...</span>
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
               </div>
             ) : images.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-3 max-h-60 overflow-y-auto">
                 {images.map((image) => (
                   <button
                     key={image.id}
                     onClick={() => onSelect(image.url)}
-                    className="group relative aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 focus:border-blue-500 transition-all duration-200"
+                    className="group relative aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-colors"
                   >
                     <img
                       src={image.url}
                       alt={image.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
-                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity duration-200" />
-                    <div className="absolute bottom-1 left-1 right-1">
-                      <div className="bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded truncate">
-                        {image.name}
-                      </div>
-                    </div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <ImageIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 mb-2">No images uploaded yet</p>
-                <p className="text-sm text-gray-400">Upload your first image to get started</p>
+              <div className="text-center py-8 text-gray-500">
+                <ImageIcon className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-sm">No images uploaded yet</p>
               </div>
             )}
           </div>
@@ -475,29 +339,24 @@ function ProperImageLibrary({ userId, onSelect, onClose }: any) {
   )
 }
 
-// ====================================
-// 4. MAIN FORM COMPONENT (CLEAN VERSION)
-// ====================================
-
-export default function BusinessAddForm() {
+// Main Form Component
+export default function FixedBusinessForm() {
   const { user } = useAuth()
   const router = useRouter()
 
   const [currentStep, setCurrentStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<any>({})
-  const [showImageLibrary, setShowImageLibrary] = useState(false)
-  const [currentImageField, setCurrentImageField] = useState<'logo' | 'cover' | 'gallery'>('logo')
+  const [showImageLibrary, setShowImageLibrary] = useState<any>({ show: false, type: 'logo' })
   const [autoSaving, setAutoSaving] = useState(false)
-  const [draftLoaded, setDraftLoaded] = useState(false)
 
-  const [formData, setFormData] = useState<BusinessDraftData>({
+  const [formData, setFormData] = useState({
     name: '',
     category_ids: [],
     description: '',
     logo_url: '',
     cover_image_url: '',
-    gallery_images: [],
+    gallery_images: [] as string[], // Ensure this is always an array of strings
     city_id: '',
     area_id: '',
     address: '',
@@ -506,8 +365,7 @@ export default function BusinessAddForm() {
     website: '',
     whatsapp: '',
     facebook_url: '',
-    instagram_url: '',
-    current_step: 1
+    instagram_url: ''
   })
 
   const [cities, setCities] = useState<City[]>([])
@@ -516,11 +374,9 @@ export default function BusinessAddForm() {
   const [loadingAreas, setLoadingAreas] = useState(false)
 
   useEffect(() => {
-    if (user) {
-      loadInitialData()
-      loadDraftFromService() // NEW: Using draft service
-    }
-  }, [user])
+    loadInitialData()
+    loadDraft() // Load saved draft
+  }, [])
 
   useEffect(() => {
     if (formData.city_id) {
@@ -531,15 +387,13 @@ export default function BusinessAddForm() {
     }
   }, [formData.city_id])
 
-  // NEW: Auto-save using draft service every 3 seconds (but not during submission)
+  // Auto-save draft
   useEffect(() => {
-    if (user && draftLoaded && !submitting) {
-      const timer = setTimeout(() => {
-        saveDraftToService()
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [formData, user, draftLoaded, currentStep, submitting])
+    const timer = setTimeout(() => {
+      saveDraft()
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [formData])
 
   const loadInitialData = async () => {
     try {
@@ -564,57 +418,44 @@ export default function BusinessAddForm() {
     }
   }
 
-  // NEW: Load draft using service
-  const loadDraftFromService = async () => {
-    if (!user) return
-    
-    try {
-      console.log('🔄 Loading draft for user:', user.id)
-      const { data: draft, error } = await draftService.loadDraft(user.id)
-      
-      if (error) {
-        console.error('Error loading draft:', error)
-        setDraftLoaded(true)
-        return
-      }
-
-      if (draft && draft.form_data) {
-        console.log('✅ Draft loaded:', draft)
-        setFormData(draft.form_data)
-        setCurrentStep(draft.current_step || 1)
-      } else {
-        console.log('📝 No draft found, starting fresh')
-      }
-    } catch (error) {
-      console.error('Error loading draft:', error)
-    } finally {
-      setDraftLoaded(true)
-    }
-  }
-
-  // NEW: Save draft using service
-  const saveDraftToService = async () => {
-    if (!user || !draftLoaded) return
-    
-    try {
-      setAutoSaving(true)
-      console.log('💾 Auto-saving draft for user:', user.id)
-      
-      await draftService.saveDraft(user.id, formData, currentStep)
-      console.log('✅ Draft saved successfully')
-      
-      setTimeout(() => setAutoSaving(false), 1000)
-    } catch (error) {
-      console.error('Error saving draft:', error)
-      setAutoSaving(false)
-    }
-  }
-
-  const updateField = (field: keyof BusinessDraftData, value: any) => {
+  const updateField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev: any) => ({ ...prev, [field]: '' }))
     }
+  }
+
+  // FIXED: Save draft functionality
+  const saveDraft = async () => {
+    try {
+      setAutoSaving(true)
+      localStorage.setItem('business_form_draft', JSON.stringify(formData))
+      setTimeout(() => setAutoSaving(false), 1000)
+    } catch (error) {
+      console.error('Error saving draft:', error)
+    }
+  }
+
+  const loadDraft = () => {
+    try {
+      const draft = localStorage.getItem('business_form_draft')
+      if (draft) {
+        const parsedData = JSON.parse(draft)
+        // Ensure gallery_images is always an array
+        setFormData({
+          ...parsedData,
+          gallery_images: parsedData.gallery_images || [],
+          category_ids: parsedData.category_ids || [],
+          phone: parsedData.phone || ['']
+        })
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error)
+    }
+  }
+
+  const clearDraft = () => {
+    localStorage.removeItem('business_form_draft')
   }
 
   // Phone management
@@ -636,24 +477,18 @@ export default function BusinessAddForm() {
     }
   }
 
-  // Image selection
+  // Image management
   const handleImageSelect = (url: string) => {
-    if (currentImageField === 'gallery') {
+    const type = showImageLibrary.type
+    if (type === 'gallery') {
       const currentGallery = formData.gallery_images || []
       if (!currentGallery.includes(url) && currentGallery.length < 6) {
         updateField('gallery_images', [...currentGallery, url])
       }
-    } else if (currentImageField === 'logo') {
-      updateField('logo_url', url)
-    } else if (currentImageField === 'cover') {
-      updateField('cover_image_url', url)
+    } else {
+      updateField(`${type}_url`, url)
     }
-    setShowImageLibrary(false)
-  }
-
-  const openImageLibrary = (field: 'logo' | 'cover' | 'gallery') => {
-    setCurrentImageField(field)
-    setShowImageLibrary(true)
+    setShowImageLibrary({ show: false, type: 'logo' })
   }
 
   // Validation
@@ -700,15 +535,11 @@ export default function BusinessAddForm() {
     setCurrentStep(prev => Math.max(prev - 1, 1))
   }
 
-  // Form submission
   const handleSubmit = async () => {
-    if (!user) return
+    if (!validateStep(4) || !user) return
 
     try {
       setSubmitting(true)
-      
-      // Clear any pending auto-save timers to prevent race conditions
-      console.log('🚀 Starting submission, stopping auto-save')
 
       const submissionData = {
         name: formData.name.trim(),
@@ -723,19 +554,14 @@ export default function BusinessAddForm() {
         category_ids: formData.category_ids,
         logo_url: formData.logo_url || undefined,
         cover_image_url: formData.cover_image_url || undefined,
-        gallery_images: (formData.gallery_images || []).length > 0 ? formData.gallery_images : undefined,
-        facebook_url: formData.facebook_url.trim() || undefined,
-        instagram_url: formData.instagram_url.trim() || undefined
+        gallery_images: (formData.gallery_images || []).length > 0 ? formData.gallery_images : undefined
       }
 
       const { data, error } = await businessService.create(submissionData, user.id)
 
       if (error) throw new Error(error.message || 'Failed to create business')
 
-      // NEW: Delete draft after successful submission using service
-      await draftService.deleteDraft(user.id)
-      
-      console.log('🎉 Business created successfully!')
+      clearDraft()
       router.push('/dashboard/business/my-listings?success=created')
 
     } catch (error) {
@@ -746,52 +572,43 @@ export default function BusinessAddForm() {
     }
   }
 
-  if (!draftLoaded) {
-    return (
-      <div className="max-w-4xl mx-auto p-8 text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading your draft...</p>
-      </div>
-    )
-  }
+  const steps = [
+    { id: 1, title: 'Business Details', icon: Building2 },
+    { id: 2, title: 'Photos', icon: Camera },
+    { id: 3, title: 'Location', icon: MapPin },
+    { id: 4, title: 'Contact', icon: User }
+  ]
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 px-2 sm:px-4 lg:px-8">
-      {/* Top Navigation */}
+    <div className="max-w-4xl mx-auto space-y-6 px-2 sm:px-4 lg:px-8"> {/* FIXED: Better mobile width */}
+      {/* FIXED: Top Navigation */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200 -mx-2 sm:-mx-4 lg:-mx-8 px-2 sm:px-4 lg:px-8 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
+            <button
               onClick={prevStep}
               disabled={currentStep === 1}
-              className="p-2"
+              className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
             >
               <ChevronLeft className="w-4 h-4" />
-            </Button>
+            </button>
             <div className="flex items-center gap-2">
               <Save className={`w-4 h-4 ${autoSaving ? 'text-green-500' : 'text-gray-400'}`} />
               <span className="text-sm text-gray-600">
-                {autoSaving ? 'Saving...' : 'Draft saved to your account'}
+                {autoSaving ? 'Saving...' : 'Draft saved'}
               </span>
             </div>
           </div>
           
           <div className="text-center">
             <p className="text-sm font-medium">Step {currentStep} of 4</p>
+            <p className="text-xs text-gray-500">{steps[currentStep - 1].title}</p>
           </div>
           
-          <Button
-            onClick={() => {
-              if (currentStep === 4) {
-                handleSubmit()
-              } else if (validateStep(currentStep)) {
-                setCurrentStep(prev => Math.min(prev + 1, 4))
-              }
-            }}
+          <button
+            onClick={currentStep === 4 ? handleSubmit : nextStep}
             disabled={submitting}
-            className="p-2 bg-blue-600 text-white hover:bg-blue-700"
+            className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {submitting ? (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -800,7 +617,7 @@ export default function BusinessAddForm() {
             ) : (
               <ChevronRight className="w-4 h-4" />
             )}
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -813,8 +630,8 @@ export default function BusinessAddForm() {
       </div>
 
       {/* Form Content */}
-      <Card className="border-0 shadow-sm sm:border sm:shadow-md">
-        <CardContent className="p-3 sm:p-6">
+      <Card className="border-0 shadow-sm sm:border sm:shadow-md"> {/* FIXED: Better mobile card */}
+        <CardContent className="p-3 sm:p-6"> {/* FIXED: Better mobile padding */}
           {/* Step 1: Business Details */}
           {currentStep === 1 && (
             <div className="space-y-6">
@@ -838,7 +655,7 @@ export default function BusinessAddForm() {
                   {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
                 </div>
 
-                {/* Category Selector */}
+                {/* FIXED: Category Selector */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Categories * (Select up to 3)
@@ -852,7 +669,7 @@ export default function BusinessAddForm() {
                   {errors.category_ids && <p className="mt-1 text-sm text-red-600">{errors.category_ids}</p>}
                 </div>
 
-                {/* Rich Text Editor */}
+                {/* FIXED: Better Rich Text Editor */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Description *
@@ -876,13 +693,12 @@ export default function BusinessAddForm() {
               
               {/* Logo */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">Business Logo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-3">Logo</label>
                 {formData.logo_url ? (
                   <div className="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg">
                     <img src={formData.logo_url} alt="Logo" className="w-16 h-16 object-cover rounded" />
                     <div className="flex-1">
                       <p className="font-medium">Logo selected</p>
-                      <p className="text-sm text-gray-500">Looking great!</p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => updateField('logo_url', '')}>
                       <X className="w-4 h-4" />
@@ -891,11 +707,11 @@ export default function BusinessAddForm() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => openImageLibrary('logo')}
+                    onClick={() => setShowImageLibrary({ show: true, type: 'logo' })}
                     className="w-full p-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors"
                   >
                     <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">Choose from your images or upload new</p>
+                    <p className="text-gray-600">Add Business Logo</p>
                   </button>
                 )}
               </div>
@@ -918,12 +734,12 @@ export default function BusinessAddForm() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => openImageLibrary('cover')}
+                    onClick={() => setShowImageLibrary({ show: true, type: 'cover' })}
                     className="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors flex items-center justify-center"
                   >
                     <div className="text-center">
                       <ImageIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-600">Choose from your images or upload new</p>
+                      <p className="text-gray-600">Add Cover Photo</p>
                     </div>
                   </button>
                 )}
@@ -957,11 +773,11 @@ export default function BusinessAddForm() {
                 {(formData.gallery_images || []).length < 6 && (
                   <button
                     type="button"
-                    onClick={() => openImageLibrary('gallery')}
+                    onClick={() => setShowImageLibrary({ show: true, type: 'gallery' })}
                     className="w-full p-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors"
                   >
                     <Plus className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">Add from your images or upload new</p>
+                    <p className="text-gray-600">Add Gallery Photos</p>
                   </button>
                 )}
               </div>
@@ -1153,7 +969,7 @@ export default function BusinessAddForm() {
             </div>
           )}
 
-          {/* Bottom Navigation */}
+          {/* FIXED: Bottom Navigation */}
           <div className="flex justify-between pt-8 border-t border-gray-200 mt-8">
             <Button
               variant="outline"
@@ -1197,12 +1013,13 @@ export default function BusinessAddForm() {
         </CardContent>
       </Card>
 
-      {/* Image Library */}
-      {showImageLibrary && user && (
-        <ProperImageLibrary
+      {/* FIXED: Working Image Library */}
+      {showImageLibrary.show && user && (
+        <ImageLibrary
           userId={user.id}
+          imageType={showImageLibrary.type}
           onSelect={handleImageSelect}
-          onClose={() => setShowImageLibrary(false)}
+          onClose={() => setShowImageLibrary({ show: false, type: 'logo' })}
         />
       )}
     </div>
