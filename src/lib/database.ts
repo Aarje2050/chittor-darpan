@@ -1,7 +1,7 @@
-// src/lib/database.ts - Clean Service Aggregator
-// Professional database service layer - imports and re-exports all services
+// src/lib/database.ts - FIXED Service Aggregator
+// Clean database service layer - imports and re-exports all services
 
-// Import all services
+// Import all existing services (keep these as they are)
 import { 
   businessService,
   type Business,
@@ -68,15 +68,41 @@ import {
   type CollectionStats
 } from './services/collections'
 
-// NEW: Import draft service
 import { 
   draftService,
   type BusinessDraftData,
   type BusinessDraft
 } from './services/draft'
 
+// FIXED: Import clean social services (we'll create these)
+import { 
+  socialService,
+  type UserFollow,
+  type BusinessFollow,
+  type SocialStats,
+  type FollowSuggestion
+} from './services/social'
+
+import { 
+  messagingService,
+  type Conversation,
+  type Message,
+  type MessageRequest,
+  type ConversationFilters,
+  type MessageFilters
+} from './services/messaging'
+
+import { 
+  activityService,
+  type UserActivity,
+  type BusinessActivity,
+  type ActivityFilters,
+  type ActivityCreateData
+} from './services/activity'
+
 // Re-export all services
 export {
+  // Core business services (keep as is)
   businessService,
   locationService,
   categoryService,
@@ -87,12 +113,17 @@ export {
   tourismImageService,
   tourismReviewService,
   collectionsService,
-  draftService // NEW: Export draft service
+  draftService,
+  
+  // FIXED: Clean social services
+  socialService,
+  messagingService,
+  activityService
 }
 
 // Re-export all types
 export type {
-  // Business types
+  // Core business types (keep as is)
   Business,
   BusinessFilters,
   BusinessCounts,
@@ -140,9 +171,28 @@ export type {
   CollectionWithItems,
   CollectionStats,
   
-  // NEW: Draft types
+  // Draft types
   BusinessDraftData,
-  BusinessDraft
+  BusinessDraft,
+  
+  // FIXED: Clean social types
+  UserFollow,
+  BusinessFollow,
+  SocialStats,
+  FollowSuggestion,
+  
+  // Messaging types
+  Conversation,
+  Message,
+  MessageRequest,
+  ConversationFilters,
+  MessageFilters,
+  
+  // Activity types
+  UserActivity,
+  BusinessActivity,
+  ActivityFilters,
+  ActivityCreateData
 }
 
 // Default export for convenience - grouped by domain
@@ -163,6 +213,11 @@ export default {
   tourismImage: tourismImageService,
   tourismReview: tourismReviewService,
   
-  // NEW: Draft functionality
-  draft: draftService
+  // Draft functionality
+  draft: draftService,
+  
+  // FIXED: Social functionality
+  social: socialService,
+  messaging: messagingService,
+  activity: activityService
 }

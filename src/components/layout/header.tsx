@@ -10,11 +10,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { useUnreadCount } from '@/hooks/use-messaging'
+
 
 export default function Header() {
   const { user, signOut } = useAuth()
   const { userRole } = useAuthWithRole()
   const router = useRouter()
+
+  const unreadCount = useUnreadCount(); // direct value
+
   
   // State for dropdowns
   const [exploreOpen, setExploreOpen] = useState(false)
@@ -187,10 +192,16 @@ export default function Header() {
               <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
             </Button>
 
-            <Button variant="ghost" size="sm" className="p-2.5 h-10 w-10 relative">
-              <MessageCircle className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 bg-blue-500 rounded-full"></span>
-            </Button>
+            <Link href="/messages">
+        <Button variant="ghost" size="sm" className="p-2.5 h-10 w-10 relative">
+          <MessageCircle className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 h-4 min-w-[1rem] px-1 text-xs bg-blue-500 text-white rounded-full flex items-center justify-center">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </Link>
 
             {/* User Menu or Login */}
             {user ? (
